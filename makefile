@@ -11,8 +11,8 @@ else
  ARCH= -arch x86_64
 endif
 
-bin/$(NAME).so: src/$(NAME).c src/*.c bin/liblua.a
-	clang $(CFLAGS) $(ARCH) $^ $(LIBS) -o bin/$(NAME).so
+bin/$(NAME).so: src/$(NAME).c src/*.c src/*.h bin/liblua.a
+	clang $(CFLAGS) $(ARCH) $(filter %.c %.a,$^) $(LIBS) -o bin/$(NAME).so
 
 install: bin/$(NAME).so | $(INSTALL_DIR)
 	mkdir -p $(INSTALL_DIR)
