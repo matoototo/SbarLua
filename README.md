@@ -36,8 +36,10 @@ Calling shell functions using `os.execute` or `io.popen` should be avoided.
 This is because these functions will block the entire lua event handler thread.
 Instead use:
 ```lua
-sbar.exec(<command>, [Optional: <lua_function>])
+sbar.exec(<command>, [Optional: <lua_function>], [Optional: <timeout_seconds>])
 ```
+
+The timeout defaults to 60 seconds. Use 0 for commands that wait for user input.
 
 The `<command>` can be any regular shell command. This function is truly
 async, which means that the command is executed without blocking the event

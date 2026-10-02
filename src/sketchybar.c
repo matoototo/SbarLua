@@ -752,10 +752,11 @@ int exec(lua_State* state) {
   }
   const char* command = lua_tostring(state, 1);
 
+  unsigned int timeout = lua_gettop(state) >= 3 ? luaL_checkinteger(state, 3) : 60;
   int pid = fork();
   if (pid != 0) return 0;
 
-  alarm(60);
+  alarm(timeout);
   if (!callback_ref) {
     char *exec[] = { "/usr/bin/env", "sh", "-c", (char*)command, NULL };
     exit(execvp(exec[0], exec));
