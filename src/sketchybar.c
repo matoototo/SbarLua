@@ -263,6 +263,7 @@ void callback_function(char* message, size_t len) {
     memcpy(&exit_code, message + 1 + sizeof(int), sizeof(int));
     char* response = message + 1 + 2*sizeof(int);
     lua_rawgeti(g_state, LUA_REGISTRYINDEX, callback_ref);
+    luaL_unref(g_state, LUA_REGISTRYINDEX, callback_ref);
     if (!json_to_lua_table(g_state, response)) {
       lua_pushstring(g_state, response);
     }
@@ -791,6 +792,7 @@ void delay_callback(CFRunLoopTimerRef timer, void* context) {
   int callback_ref = (int)(intptr_t)context;
 
   lua_rawgeti(g_state, LUA_REGISTRYINDEX, callback_ref);
+  luaL_unref(g_state, LUA_REGISTRYINDEX, callback_ref);
   transaction_create(g_state);
   int error = lua_pcall(g_state, 0, 0, 0);
 
