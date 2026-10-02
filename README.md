@@ -38,7 +38,8 @@ Instead use:
 ```lua
 sbar.exec(<command>, [Optional: <lua_function>])
 ```
-where the `<command>` can be any regular shell command. This function is truly
+
+The `<command>` can be any regular shell command. This function is truly
 async, which means that the command is executed without blocking the event
 thread. If you depend on the result of the `<command>` you can optionally
 specify a function as a completion handler, which will receive the result of
@@ -49,6 +50,23 @@ sbar.exec("sleep 5 && echo TEST", function(result, exit_code)
   print(result)
 end)
 ```
+
+## AeroSpace
+
+Requires an AeroSpace build with `subscribe-state` support.
+
+```lua
+sbar.aerospace(function(state)
+  print(state.workspace)
+end)
+sbar.aerospace_command({ "workspace", "@profile-next" })
+```
+
+Snapshots contain `workspace`, `profile`, `windows`, and `focused`.
+The subscription reconnects automatically and batches callback updates without
+waiting for SketchyBar replies. Commands run in order over a separate socket.
+This fork also remembers recent workspaces, adjusts Chrome scheduling priority,
+and keeps Discord utility windows floating on the current workspace.
 
 ## LUA API
 ### Bar Domain

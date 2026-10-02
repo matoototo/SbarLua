@@ -5,6 +5,7 @@
 #include <lualib.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdint.h>
+#include <dispatch/dispatch.h>
 
 #include "stack.h"
 
@@ -43,7 +44,6 @@ struct callbacks g_callbacks;
 static char* g_cmd = NULL;
 static uint32_t g_cmd_len = 0;
 static char g_bootstrap_name[64];
-mach_port_t g_port = 0;
 uint32_t g_uid_counter;
 char g_bs_lookup[256] = "git.felix.sketchybar";
 
@@ -59,7 +59,25 @@ static char *luat_to_string(int type) {
   }
 }
 
-static char* sketchybar(struct stack* stack) {
+struct sketchybar_message {
+  char bar[sizeof(g_bs_lookup)];
+  uint32_t length;
+  bool wait_for_response;
+  char* response;
+  char data[];
+};
+
+static dispatch_queue_t g_send_queue;
+
+static void sketchybar_send(void* context) {
+  struct sketchybar_message* message = context;
+  message->response = mach_send_message(mach_get_bs_port(message->bar),
+                                        message->data, message->length,
+                                        message->wait_for_response);
+  if (!message->wait_for_response) free(message);
+}
+
+static char* sketchybar_dispatch(struct stack* stack, bool wait_for_response) {
   uint32_t message_length;
   char* message = stack_flatten_ttb(stack, &message_length);
 
@@ -75,22 +93,25 @@ static char* sketchybar(struct stack* stack) {
     message_length = g_cmd_len;
   }
 
-  if (!g_port) g_port = mach_get_bs_port(g_bs_lookup);
-  char message_format[message_length + 1];
-  memcpy(message_format, message, message_length);
-  message_format[message_length] = '\0';
-  char* response = mach_send_message(g_port,
-                                     message_format,
-                                     message_length + 1,
-                                     true               );
-  if (!response) {
-    g_port = mach_get_bs_port(g_bs_lookup);
-    response = mach_send_message(g_port,
-                                 message_format,
-                                 message_length + 1,
-                                 true               );
+  if (!g_send_queue) g_send_queue = dispatch_queue_create("com.mato.sketchybar-send", DISPATCH_QUEUE_SERIAL);
+  struct sketchybar_message* queued = malloc(sizeof(*queued) + message_length + 1);
+  memcpy(queued->bar, g_bs_lookup, sizeof(queued->bar));
+  queued->length = message_length + 1;
+  queued->wait_for_response = wait_for_response;
+  memcpy(queued->data, message, message_length);
+  queued->data[message_length] = '\0';
+  if (!wait_for_response) {
+    dispatch_async_f(g_send_queue, queued, sketchybar_send);
+    return NULL;
   }
+  dispatch_sync_f(g_send_queue, queued, sketchybar_send);
+  char* response = queued->response;
+  free(queued);
   return response;
+}
+
+static char* sketchybar(struct stack* stack) {
+  return sketchybar_dispatch(stack, true);
 }
 
 static void sketchybar_call_log_and_cleanup(struct stack* stack) {
@@ -111,10 +132,10 @@ static int transaction_create(lua_State* state) {
   return 0;
 }
 
-static int transaction_commit(lua_State* state) {
+static int transaction_commit_mode(lua_State* state, bool wait_for_response) {
   char* response = NULL;
   if (g_cmd) {
-    response = sketchybar(NULL);
+    if (g_cmd_len || wait_for_response) response = sketchybar_dispatch(NULL, wait_for_response);
     free(g_cmd);
     if (response) {
       if (strlen(response) > 0) printf("[i] sketchybar: %s\n", response);
@@ -124,6 +145,10 @@ static int transaction_commit(lua_State* state) {
     g_cmd = NULL;
   }
   return 0;
+}
+
+static int transaction_commit(lua_State* state) {
+  return transaction_commit_mode(state, true);
 }
 
 int animate(lua_State* state) {
@@ -706,7 +731,6 @@ int set_bar_name(lua_State* state) {
   }
 
   const char* name = lua_tostring(state, 1);
-  g_port = 0;
   snprintf(g_bs_lookup, 256, "git.felix.%s", name);
   return 0;
 }
@@ -824,7 +848,11 @@ static int os_execute_sig(lua_State *L) {
   }
 }
 
+#include "aerospace.h"
+
 static const struct luaL_Reg functions[] = {
+    { "aerospace", aerospace },
+    { "aerospace_command", aerospace_command },
     { "add", add },
     { "remove", remove_sbar },
     { "set", set },
@@ -900,6 +928,12 @@ int luaopen_sketchybar(lua_State* L) {
 
   lua_pushcfunction(L, delay);
   lua_setfield(L, -2, "delay");
+
+  lua_pushcfunction(L, aerospace);
+  lua_setfield(L, -2, "aerospace");
+
+  lua_pushcfunction(L, aerospace_command);
+  lua_setfield(L, -2, "aerospace_command");
 
   lua_pushcfunction(L, transaction_create);
   lua_setfield(L, -2, "begin_config");
